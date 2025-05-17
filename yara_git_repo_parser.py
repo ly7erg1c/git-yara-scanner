@@ -60,6 +60,47 @@ def clone_repo(repo_url, base_dir):
             return None
     return dest
 
+def parse_yara_output(output):
+    records = []
+    current = None
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith('0x') and ':' in line and ' ' in line:
+            parts = line.split(maxsplit=3)
+            ns_rule, tags_raw, meta_raw, path = parts
+            ns, rule = ns_rule.split(':', 1)
+            tags = tags_raw.strip('[]')
+            meta = meta_raw.strip('[]')
+            current = {
+                'namespace': ns,
+                'rule': rule,
+                'tags': tags.split(',') if tags else [],
+                'meta': meta.split(',') if meta else [],
+                'file': path,
+                'strings': []
+            }
+            records.append(current)
+        elif line.startswith('0x') and current is not None:
+            parts = line.split(':', 2)
+            if len(parts) == 3:
+                offset, identifier, data = parts
+                current['strings'].append({
+                    'offset': offset,
+                    'identifier': identifier,
+                    'data': data.strip()
+                })
+    return records
+
+def scan_repo(path, rules_file):
+    cmd = ['yara', '-r', '-s', '-m', '-g', '-e', rules_file, path]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 and not result.stdout:
+        if result.stderr:
+            print(f'Error: YARA scanning failed: {result.stderr}', file=sys.stderr)
+        return []
+    return parse_yara_output(result.stdout)
+
 def main():
     args = parse_args()
     if not args.repos and not args.repos_file:
