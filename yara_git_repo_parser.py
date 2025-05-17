@@ -12,10 +12,11 @@ import csv
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Clone git repositories, run YARA rules, and output results.')
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         '--repos-file', '-r', type=str,
         help='Path to file containing repository URLs (one per line).')
-    parser.add_argument(
+    group.add_argument(
         'repos', nargs='*',
         help='Repository URLs to clone.')
     parser.add_argument(
@@ -62,8 +63,12 @@ def clone_repo(repo_url, base_dir):
 
 def main():
     args = parse_args()
-    # Implementation will be added in feature branches
-    pass
+    repos = args.repos or load_repos_from_file(args.repos_file)
+    os.makedirs(args.clone_dir, exist_ok=True)
+    for repo in repos:
+        cloned = clone_repo(repo, args.clone_dir)
+        if args.cleanup and cloned:
+            shutil.rmtree(cloned, ignore_errors=True)
 
 if __name__ == '__main__':
     main()
