@@ -62,8 +62,18 @@ def clone_repo(repo_url, base_dir):
 
 def main():
     args = parse_args()
-    # Implementation will be added in feature branches
-    pass
+    if not args.repos and not args.repos_file:
+        print('Error: must specify at least one repo URL or --repos-file', file=sys.stderr)
+        sys.exit(1)
+    if args.repos and args.repos_file:
+        print('Error: specify either repos URLs or --repos-file, not both', file=sys.stderr)
+        sys.exit(1)
+    repos = args.repos or load_repos_from_file(args.repos_file)
+    os.makedirs(args.clone_dir, exist_ok=True)
+    for repo in repos:
+        cloned = clone_repo(repo, args.clone_dir)
+        if args.cleanup and cloned:
+            shutil.rmtree(cloned, ignore_errors=True)
 
 if __name__ == '__main__':
     main()
