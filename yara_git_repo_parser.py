@@ -101,6 +101,41 @@ def scan_repo(path, rules_file):
         return []
     return parse_yara_output(result.stdout)
 
+def output_text(results, writer):
+    for item in results:
+        writer.write(f"Repository: {item['url']}\n")
+        writer.write(f"Path: {item['path']}\n")
+        matches = item['matches']
+        if not matches:
+            writer.write('No matches found.\n\n')
+            continue
+        total = sum(len(rec['strings']) for rec in matches)
+        writer.write(f'Found {total} matches:\n')
+        for rec in matches:
+            for s in rec['strings']:
+                writer.write(
+                    f"  - {rec['rule']} ({rec['namespace']}) in {rec['file']} "
+                    f"at {s['offset']}: {s['identifier']} => {s['data']}\n"
+                )
+        writer.write('\n')
+
+def output_json(results, writer):
+    json.dump(results, writer, indent=2)
+
+def output_csv(results, writer):
+    csv_writer = csv.writer(writer)
+    header = ['url', 'path', 'namespace', 'rule', 'tags', 'meta', 'file', 'offset', 'identifier', 'data']
+    csv_writer.writerow(header)
+    for item in results:
+        for rec in item['matches']:
+            tags = ';'.join(rec['tags'])
+            meta = ';'.join(rec['meta'])
+            for s in rec['strings']:
+                csv_writer.writerow([
+                    item['url'], item['path'], rec['namespace'], rec['rule'],
+                    tags, meta, rec['file'], s['offset'], s['identifier'], s['data']
+                ])
+
 def main():
     args = parse_args()
     if not args.repos and not args.repos_file:
@@ -111,10 +146,28 @@ def main():
         sys.exit(1)
     repos = args.repos or load_repos_from_file(args.repos_file)
     os.makedirs(args.clone_dir, exist_ok=True)
+    results = []
     for repo in repos:
         cloned = clone_repo(repo, args.clone_dir)
-        if args.cleanup and cloned:
+        if not cloned:
+            continue
+        matches = scan_repo(cloned, args.rules_file)
+        results.append({'url': repo, 'path': cloned, 'matches': matches})
+        if args.cleanup:
             shutil.rmtree(cloned, ignore_errors=True)
+
+    if args.output_file:
+        out_fh = open(args.output_file, 'w', encoding='utf-8')
+    else:
+        out_fh = sys.stdout
+    if args.format == 'text':
+        output_text(results, out_fh)
+    elif args.format == 'json':
+        output_json(results, out_fh)
+    else:
+        output_csv(results, out_fh)
+    if args.output_file:
+        out_fh.close()
 
 if __name__ == '__main__':
     main()
